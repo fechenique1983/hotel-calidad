@@ -593,9 +593,315 @@ const badgePuntaje = (p) => {
 };
 
 // ─── COMPONENTE PRINCIPAL ────────────────────────────────────────────────────
+// ─── REPORTES ────────────────────────────────────────────────────────────────
+function ReportesView({ controles, tareas }) {
+    const [desde, setDesde] = useState('');
+    const [hasta, setHasta] = useState('');
+
+    // Filtrar por rango de fechas
+    const filtrarPorFecha = (arr) => {
+        return arr.filter(item => {
+            const ts = item.timestamp;
+            const d = desde ? new Date(desde).getTime() : 0;
+            const h = hasta ? new Date(hasta + 'T23:59:59').getTime() : Infinity;
+            return ts >= d && ts <= h;
+        });
+    };
+
+    const controlesFiltrados = filtrarPorFecha(controles);
+    const tareasFiltradas = filtrarPorFecha(tareas);
+
+    // ── Descarga CSV ──
+    const descargarCSV = (filas, encabezados, nombre) => {
+        const bom = '﻿';
+        const enc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+        const lineas = [encabezados.map(enc).join(','), ...filas.map(f => f.map(enc).join(','))];
+        const blob = new Blob([bom + lineas.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = nombre + '.csv'; a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    // ── Descarga PDF (vía ventana de impresión) ──
+    const descargarPDF = (titulo, htmlContent) => {
+        const w = window.open('', '_blank');
+        w.document.write(`<!DOCTYPE html><html><head>
+            <meta charset="UTF-8"><title>${titulo}</title>
+            <style>
+                body { font-family: Arial, sans-serif; font-size: 12px; color: #333; padding: 20px; }
+                h1 { font-size: 18px; color: #17355B; margin-bottom: 4px; }
+                .sub { font-size: 11px; color: #666; margin-bottom: 16px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+                th { background: #17355B; color: #fff; padding: 6px 8px; text-align: left; font-size: 11px; }
+                td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+                tr:nth-child(even) td { background: #f9fafb; }
+                .badge { display: inline-block; padding: 2px 6px; border-radius: 999px; font-size: 10px; font-weight: bold; }
+                .g { background:#dcfce7;color:#166534; } .b { background:#dbeafe;color:#1e40af; }
+                .y { background:#fef9c3;color:#92400e; } .r { background:#fee2e2;color:#991b1b; }
+                .tag-pend { background:#fef3c7;color:#b45309; } .tag-res { background:#d1fae5;color:#065f46; }
+                @media print { body { padding: 0; } }
+            </style>
+        </head><body>${htmlContent}</body></html>`);
+        w.document.close();
+        setTimeout(() => { w.print(); }, 400);
+    };
+
+    const puntajeBadgeClass = (p) => {
+        if (p >= 90) return 'g'; if (p >= 75) return 'b'; if (p >= 60) return 'y'; return 'r';
+    };
+    const puntajeTexto = (p) => {
+        if (p >= 90) return `${p} — Excelente`; if (p >= 75) return `${p} — Bueno`;
+        if (p >= 60) return `${p} — Regular`; return `${p} — Deficiente`;
+    };
+
+    const subtitulo = () => {
+        if (desde && hasta) return `Del ${desde} al ${hasta}`;
+        if (desde) return `Desde ${desde}`;
+        if (hasta) return `Hasta ${hasta}`;
+        return 'Todos los registros';
+    };
+
+    // ── Reportes definidos ──
+    const reportes = [
+        {
+            id: 'historial',
+            titulo: '📋 Historial de controles',
+            descripcion: 'Todos los controles realizados con puntaje, sección y controlador.',
+            color: 'border-blue-200 bg-blue-50',
+            badge: 'bg-blue-100 text-blue-800',
+            count: controlesFiltrados.length,
+            unit: 'controles',
+            accionesCSV: () => {
+                const enc = ['Fecha', 'Sección', 'Habitación', 'Puntaje', 'Calificación', 'Controlador'];
+                const filas = controlesFiltrados.map(c => {
+                    const p = c.puntaje ?? '—';
+                    const cal = c.puntaje != null ? (c.puntaje >= 90 ? 'Excelente' : c.puntaje >= 75 ? 'Bueno' : c.puntaje >= 60 ? 'Regular' : 'Deficiente') : '—';
+                    return [formatFecha(c.timestamp), c.seccionNombre ?? c.seccion, c.habitacion ? `Hab. #${c.habitacion.numero}` : '—', p, cal, c.usuario ?? '—'];
+                });
+                descargarCSV(filas, enc, `historial_controles_${new Date().toISOString().slice(0,10)}`);
+            },
+            accionesPDF: () => {
+                const filas = controlesFiltrados.map(c => {
+                    const p = c.puntaje; const cal = p != null ? puntajeTexto(p) : '—';
+                    return `<tr><td>${formatFecha(c.timestamp)}</td><td>${c.seccionNombre ?? c.seccion}</td><td>${c.habitacion ? 'Hab. #' + c.habitacion.numero : '—'}</td><td><span class="badge ${puntajeBadgeClass(p)}">${cal}</span></td><td>${c.usuario ?? '—'}</td></tr>`;
+                }).join('');
+                descargarPDF('Historial de Controles — Azur Hotel & Spa', `
+                    <h1>Historial de Controles</h1><div class="sub">Azur Hotel &amp; Spa · ${subtitulo()}</div>
+                    <table><thead><tr><th>Fecha</th><th>Sección</th><th>Habitación</th><th>Puntaje</th><th>Controlador</th></tr></thead>
+                    <tbody>${filas}</tbody></table>`);
+            }
+        },
+        {
+            id: 'tareas_pendientes',
+            titulo: '⚠️ Tareas pendientes',
+            descripcion: 'Solo las tareas sin resolver, con área y origen del control.',
+            color: 'border-yellow-200 bg-yellow-50',
+            badge: 'bg-yellow-100 text-yellow-800',
+            count: tareasFiltradas.filter(t => !t.resuelta).length,
+            unit: 'pendientes',
+            accionesCSV: () => {
+                const enc = ['Fecha', 'Ítem', 'Sección', 'Habitación', 'Estado', 'Área', 'Observación'];
+                const filas = tareasFiltradas.filter(t => !t.resuelta).map(t => [
+                    formatFecha(t.timestamp), t.item, t.seccionNombre ?? '—',
+                    t.habitacion ? `Hab. #${t.habitacion.numero}` : '—',
+                    t.estado, t.area ?? 'Sin asignar', t.observacion ?? ''
+                ]);
+                descargarCSV(filas, enc, `tareas_pendientes_${new Date().toISOString().slice(0,10)}`);
+            },
+            accionesPDF: () => {
+                const pend = tareasFiltradas.filter(t => !t.resuelta);
+                const areas = ['HSK', 'Mantenimiento', 'Sin asignar'];
+                let html = `<h1>Tareas Pendientes</h1><div class="sub">Azur Hotel &amp; Spa · ${subtitulo()}</div>`;
+                areas.forEach(area => {
+                    const items = pend.filter(t => (t.area ?? 'Sin asignar') === area);
+                    if (!items.length) return;
+                    html += `<h3 style="margin-top:16px;color:#17355B">${area} (${items.length})</h3>
+                        <table><thead><tr><th>Fecha</th><th>Ítem</th><th>Sección</th><th>Habitación</th><th>Estado</th><th>Observación</th></tr></thead><tbody>
+                        ${items.map(t => `<tr><td>${formatFecha(t.timestamp)}</td><td>${t.item}</td><td>${t.seccionNombre ?? '—'}</td><td>${t.habitacion ? 'Hab. #' + t.habitacion.numero : '—'}</td><td><span class="badge ${t.estado === 'mal' ? 'r' : 'y'}">${t.estado}</span></td><td>${t.observacion ?? ''}</td></tr>`).join('')}
+                        </tbody></table>`;
+                });
+                descargarPDF('Tareas Pendientes — Azur Hotel & Spa', html);
+            }
+        },
+        {
+            id: 'tareas_por_area',
+            titulo: '🗂️ Tareas por área',
+            descripcion: 'Pendientes y resueltas agrupadas por HSK, Mantenimiento y Sin asignar.',
+            color: 'border-purple-200 bg-purple-50',
+            badge: 'bg-purple-100 text-purple-800',
+            count: tareasFiltradas.length,
+            unit: 'tareas',
+            accionesCSV: () => {
+                const enc = ['Área', 'Estado', 'Fecha', 'Ítem', 'Sección', 'Habitación', 'Resuelta por', 'Fecha resolución', 'Nota resolución'];
+                const filas = tareasFiltradas.map(t => [
+                    t.area ?? 'Sin asignar', t.resuelta ? 'Resuelta' : 'Pendiente',
+                    formatFecha(t.timestamp), t.item, t.seccionNombre ?? '—',
+                    t.habitacion ? `Hab. #${t.habitacion.numero}` : '—',
+                    t.resueltaPor ?? '—', t.resueltaTimestamp ? formatFecha(t.resueltaTimestamp) : '—',
+                    t.notaResolucion ?? ''
+                ]);
+                descargarCSV(filas, enc, `tareas_por_area_${new Date().toISOString().slice(0,10)}`);
+            },
+            accionesPDF: () => {
+                const areas = ['HSK', 'Mantenimiento', 'Sin asignar'];
+                let html = `<h1>Tareas por Área</h1><div class="sub">Azur Hotel &amp; Spa · ${subtitulo()}</div>`;
+                areas.forEach(area => {
+                    const items = tareasFiltradas.filter(t => (t.area ?? 'Sin asignar') === area);
+                    if (!items.length) return;
+                    const pend = items.filter(t => !t.resuelta).length;
+                    const res = items.filter(t => t.resuelta).length;
+                    html += `<h3 style="margin-top:16px;color:#17355B">${area} — ${pend} pendiente${pend !== 1 ? 's' : ''}, ${res} resuelta${res !== 1 ? 's' : ''}</h3>
+                        <table><thead><tr><th>Estado</th><th>Fecha</th><th>Ítem</th><th>Sección</th><th>Resuelta por</th></tr></thead><tbody>
+                        ${items.map(t => `<tr><td><span class="badge ${t.resuelta ? 'g' : t.estado === 'mal' ? 'r' : 'y'}">${t.resuelta ? 'Resuelta' : t.estado}</span></td><td>${formatFecha(t.timestamp)}</td><td>${t.item}</td><td>${t.seccionNombre ?? '—'}</td><td>${t.resueltaPor ?? '—'}</td></tr>`).join('')}
+                        </tbody></table>`;
+                });
+                descargarPDF('Tareas por Área — Azur Hotel & Spa', html);
+            }
+        },
+        {
+            id: 'tareas_por_controlador',
+            titulo: '👤 Tareas por controlador',
+            descripcion: 'Pendientes y resueltas agrupadas por quién hizo el control (Federico / Lucía).',
+            color: 'border-green-200 bg-green-50',
+            badge: 'bg-green-100 text-green-800',
+            count: tareasFiltradas.length,
+            unit: 'tareas',
+            accionesCSV: () => {
+                const enc = ['Controlador', 'Estado', 'Fecha', 'Ítem', 'Sección', 'Habitación', 'Área', 'Resuelta por'];
+                // Para asociar tareas a controlador, necesitamos el control padre
+                const tareaConControlador = tareasFiltradas.map(t => {
+                    const ctrl = controles.find(c => c.id === t.controlId);
+                    return { ...t, controlador: ctrl?.usuario ?? '—' };
+                });
+                const filas = tareaConControlador.map(t => [
+                    t.controlador, t.resuelta ? 'Resuelta' : 'Pendiente',
+                    formatFecha(t.timestamp), t.item, t.seccionNombre ?? '—',
+                    t.habitacion ? `Hab. #${t.habitacion.numero}` : '—',
+                    t.area ?? 'Sin asignar', t.resueltaPor ?? '—'
+                ]);
+                descargarCSV(filas, enc, `tareas_por_controlador_${new Date().toISOString().slice(0,10)}`);
+            },
+            accionesPDF: () => {
+                const tareaConCtrl = tareasFiltradas.map(t => {
+                    const ctrl = controles.find(c => c.id === t.controlId);
+                    return { ...t, controlador: ctrl?.usuario ?? 'Sin asignar' };
+                });
+                const controladores = [...new Set(tareaConCtrl.map(t => t.controlador))].sort();
+                let html = `<h1>Tareas por Controlador</h1><div class="sub">Azur Hotel &amp; Spa · ${subtitulo()}</div>`;
+                controladores.forEach(ctrl => {
+                    const items = tareaConCtrl.filter(t => t.controlador === ctrl);
+                    const pend = items.filter(t => !t.resuelta).length;
+                    const res = items.filter(t => t.resuelta).length;
+                    html += `<h3 style="margin-top:16px;color:#17355B">${ctrl} — ${pend} pendiente${pend !== 1 ? 's' : ''}, ${res} resuelta${res !== 1 ? 's' : ''}</h3>
+                        <table><thead><tr><th>Estado</th><th>Fecha</th><th>Ítem</th><th>Sección</th><th>Área</th></tr></thead><tbody>
+                        ${items.map(t => `<tr><td><span class="badge ${t.resuelta ? 'g' : t.estado === 'mal' ? 'r' : 'y'}">${t.resuelta ? 'Resuelta' : t.estado}</span></td><td>${formatFecha(t.timestamp)}</td><td>${t.item}</td><td>${t.seccionNombre ?? '—'}</td><td>${t.area ?? 'Sin asignar'}</td></tr>`).join('')}
+                        </tbody></table>`;
+                });
+                descargarPDF('Tareas por Controlador — Azur Hotel & Spa', html);
+            }
+        },
+        {
+            id: 'resumen_puntajes',
+            titulo: '📊 Resumen de puntajes',
+            descripcion: 'Promedio por sección, cantidad de controles y distribución Excelente/Bueno/Regular/Deficiente.',
+            color: 'border-indigo-200 bg-indigo-50',
+            badge: 'bg-indigo-100 text-indigo-800',
+            count: controlesFiltrados.length,
+            unit: 'controles',
+            accionesCSV: () => {
+                const porSeccion = {};
+                controlesFiltrados.forEach(c => {
+                    const s = c.seccionNombre ?? c.seccion;
+                    if (!porSeccion[s]) porSeccion[s] = [];
+                    if (c.puntaje != null) porSeccion[s].push(c.puntaje);
+                });
+                const enc = ['Sección', 'Nº Controles', 'Promedio', 'Calificación', 'Excelente (≥90)', 'Bueno (≥75)', 'Regular (≥60)', 'Deficiente (<60)'];
+                const filas = Object.entries(porSeccion).map(([sec, pts]) => {
+                    const avg = pts.length ? Math.round(pts.reduce((a,b)=>a+b,0)/pts.length) : 0;
+                    const cal = avg >= 90 ? 'Excelente' : avg >= 75 ? 'Bueno' : avg >= 60 ? 'Regular' : 'Deficiente';
+                    return [sec, pts.length, avg, cal, pts.filter(p=>p>=90).length, pts.filter(p=>p>=75&&p<90).length, pts.filter(p=>p>=60&&p<75).length, pts.filter(p=>p<60).length];
+                });
+                descargarCSV(filas, enc, `resumen_puntajes_${new Date().toISOString().slice(0,10)}`);
+            },
+            accionesPDF: () => {
+                const porSeccion = {};
+                controlesFiltrados.forEach(c => {
+                    const s = c.seccionNombre ?? c.seccion;
+                    if (!porSeccion[s]) porSeccion[s] = [];
+                    if (c.puntaje != null) porSeccion[s].push(c.puntaje);
+                });
+                let filas = Object.entries(porSeccion).map(([sec, pts]) => {
+                    const avg = pts.length ? Math.round(pts.reduce((a,b)=>a+b,0)/pts.length) : 0;
+                    return `<tr><td>${sec}</td><td style="text-align:center">${pts.length}</td><td><span class="badge ${puntajeBadgeClass(avg)}">${puntajeTexto(avg)}</span></td><td style="text-align:center">${pts.filter(p=>p>=90).length}</td><td style="text-align:center">${pts.filter(p=>p>=75&&p<90).length}</td><td style="text-align:center">${pts.filter(p=>p>=60&&p<75).length}</td><td style="text-align:center">${pts.filter(p=>p<60).length}</td></tr>`;
+                }).join('');
+                descargarPDF('Resumen de Puntajes — Azur Hotel & Spa', `
+                    <h1>Resumen de Puntajes por Sección</h1><div class="sub">Azur Hotel &amp; Spa · ${subtitulo()}</div>
+                    <table><thead><tr><th>Sección</th><th>Controles</th><th>Promedio</th><th>Exc.</th><th>Bueno</th><th>Reg.</th><th>Def.</th></tr></thead>
+                    <tbody>${filas}</tbody></table>`);
+            }
+        },
+    ];
+
+    return React.createElement('div', { className: 'max-w-4xl mx-auto p-4' },
+        React.createElement('h2', { className: 'font-bold text-gray-700 mb-1 text-lg' }, 'Reportes'),
+        React.createElement('p', { className: 'text-sm text-gray-500 mb-4' }, 'Exportá los datos como PDF (para imprimir o compartir) o CSV (para Excel).'),
+
+        // Filtro de fechas
+        React.createElement('div', { className: 'bg-white rounded-xl shadow p-4 mb-5 flex flex-wrap gap-3 items-end' },
+            React.createElement('div', null,
+                React.createElement('label', { className: 'block text-xs text-gray-500 mb-1' }, 'Desde'),
+                React.createElement('input', {
+                    type: 'date', value: desde, onChange: e => setDesde(e.target.value),
+                    className: 'px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400'
+                })
+            ),
+            React.createElement('div', null,
+                React.createElement('label', { className: 'block text-xs text-gray-500 mb-1' }, 'Hasta'),
+                React.createElement('input', {
+                    type: 'date', value: hasta, onChange: e => setHasta(e.target.value),
+                    className: 'px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400'
+                })
+            ),
+            React.createElement('button', {
+                onClick: () => { setDesde(''); setHasta(''); },
+                className: 'px-3 py-2 text-sm text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-lg'
+            }, 'Limpiar filtro'),
+            desde || hasta ? React.createElement('span', { className: 'text-xs text-blue-600 font-medium self-center' }, `📅 ${subtitulo()}`) : null
+        ),
+
+        // Cards de reportes
+        React.createElement('div', { className: 'grid gap-4 md:grid-cols-2' },
+            reportes.map(r => React.createElement('div', {
+                key: r.id,
+                className: `bg-white rounded-xl shadow border-l-4 p-4 ${r.color}`
+            },
+                React.createElement('div', { className: 'flex items-start justify-between mb-2' },
+                    React.createElement('h3', { className: 'font-semibold text-gray-800 text-sm' }, r.titulo),
+                    React.createElement('span', { className: `text-xs font-bold px-2 py-0.5 rounded-full ${r.badge}` },
+                        `${r.count} ${r.unit}`
+                    )
+                ),
+                React.createElement('p', { className: 'text-xs text-gray-500 mb-3' }, r.descripcion),
+                React.createElement('div', { className: 'flex gap-2' },
+                    React.createElement('button', {
+                        onClick: r.accionesPDF,
+                        disabled: r.count === 0,
+                        className: `flex-1 py-2 rounded-lg text-xs font-semibold transition ${r.count > 0 ? 'bg-red-50 text-red-700 border border-red-200 hover:bg-red-100' : 'bg-gray-50 text-gray-300 border border-gray-100 cursor-not-allowed'}`
+                    }, '🖨️ PDF'),
+                    React.createElement('button', {
+                        onClick: r.accionesCSV,
+                        disabled: r.count === 0,
+                        className: `flex-1 py-2 rounded-lg text-xs font-semibold transition ${r.count > 0 ? 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100' : 'bg-gray-50 text-gray-300 border border-gray-100 cursor-not-allowed'}`
+                    }, '📊 CSV')
+                )
+            ))
+        )
+    );
+}
+
 function App() {
     const [user, setUser] = useState(null);
-    const [vista, setVista] = useState('inicio'); // inicio | checklist | historial | tareas
+    const [vista, setVista] = useState('inicio'); // inicio | checklist | historial | tareas | reportes
     const [seccionActiva, setSeccionActiva] = useState(null);
     const [habitacionActiva, setHabitacionActiva] = useState(null);
     const [controles, setControles] = useState([]);
@@ -666,6 +972,10 @@ function App() {
                     }, tareas.filter(t => !t.resuelta).length) : null
                 ),
                 React.createElement('button', {
+                    onClick: () => setVista('reportes'),
+                    className: `px-3 py-1.5 rounded text-sm font-medium ${vista === 'reportes' ? 'bg-white text-blue-900' : 'bg-white/20 hover:bg-white/30'}`
+                }, '📊 Reportes'),
+                React.createElement('button', {
                     onClick: () => { setUser(null); setVista('inicio'); },
                     className: 'px-3 py-1.5 rounded text-sm bg-white/20 hover:bg-white/30'
                 }, 'Salir')
@@ -688,7 +998,8 @@ function App() {
         }) : null,
 
         vista === 'historial' ? React.createElement(HistorialView, { controles, tareas }) : null,
-        vista === 'tareas' ? React.createElement(TareasView, { tareas, user }) : null
+        vista === 'tareas' ? React.createElement(TareasView, { tareas, user }) : null,
+        vista === 'reportes' ? React.createElement(ReportesView, { controles, tareas }) : null
     );
 }
 
