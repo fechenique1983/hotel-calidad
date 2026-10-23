@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#17355B">
+    <title>Azur — Control de Calidad</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #f5f5f5; }
+        .azur-blue { background-color: #17355B; }
+        .azur-blue-text { color: #17355B; }
+        .score-excellent { color: #16a34a; }
+        .score-good { color: #2563eb; }
+        .score-regular { color: #d97706; }
+        .score-poor { color: #dc2626; }
+        .item-bien { background: #dcfce7; border-left: 4px solid #16a34a; }
+        .item-regular { background: #fef9c3; border-left: 4px solid #d97706; }
+        .item-mal { background: #fee2e2; border-left: 4px solid #dc2626; }
+        .item-pending { background: #f3f4f6; border-left: 4px solid #9ca3af; }
+        @media (max-width: 640px) { .mobile-stack { flex-direction: column; } }
+    </style>
+</head>
+<body>
+
+<div id="root"></div>
+
+<script>
+const firebaseConfig = {
+    apiKey: "AIzaSyBxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    authDomain: "azurhotel-calidad.firebaseapp.com",
+    databaseURL: "https://azurhotel-calidad-default-rtdb.firebaseio.com",
+    projectId: "azurhotel-calidad",
+    storageBucket: "azurhotel-calidad.appspot.com",
+    messagingSenderId: "000000000000",
+    appId: "1:000000000000:web:xxxxxxxxxxxxxxxx"
+};
+
+let db = null;
+try {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+    console.log('✅ Firebase conectado');
+} catch(e) {
+    console.log('⚠️ Firebase no disponible:', e.message);
+}
+</script>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+// ─── USUARIOS ────────────────────────────────────────────────────────────────
+const USERS = [
+    { id: 1, username: 'fechenique', password: 'azur2024', name: 'Federico Echenique' },
+    { id: 2, username: 'lapelans',   password: 'calidad123', name: 'Lucía Apelans' },
+    { id: 3, username: 'scampasso',  password: 'gerencia123', name: 'Santiago Campasso' },
+    { id: 4, username: 'rrodriguez', password: 'directorio123', name: 'Ramiro Rodriguez' },
+];
+
+// ─── HABITACIONES ────────────────────────────────────────────────────────────
+const HABITACIONES = [
+    { numero: 1,  categoria: 'Standard' },
+    { numero: 2,  categoria: 'Standard' },
+    { numero: 3,  categoria: 'Standard' },
+    { numero: 4,  categoria: 'Standard' },
+    { numero: 5,  categoria: 'Clásica' },
+    { numero: 6,  categoria: 'Clásica' },
+    { numero: 7,  categoria: 'Clásica' },
+    { numero: 8,  categoria: 'Superior' },
+    { numero: 9,  categoria: 'Superior' },
+    { numero: 10, categoria: 'Superior' },
+    { numero: 11, categoria: 'Deluxe' },
+    { numero: 12, categoria: 'Deluxe' },
+    { numero: 14, categoria: 'Deluxe' },
+    { numero: 15, categoria: 'Deluxe' },
+    { numero: 16, categoria: 'Deluxe' },
+    { numero: 18, categoria: 'Suite Azur' },
+];
+
+// ─── CHECKLISTS ──────────────────────────────────────────────────────────────
+const CHECKLISTS = {
+    ingresos: {
+        nombre: 'Ingresos',
+        icono: '🚪',
+        secciones: [
+            {
+                nombre: 'Ingreso por Ascensor',
+                items: [
+                    'Limpieza de puertas de madera',
+                    'Limpieza de puertas de vidrios',
+                    'Limpieza de timbre y portero',
+                    'Limpieza de teléfono y tablero de planta baja',
+                    'Limpieza cartel al lado del ascensor',
+                    'Limpieza de ventana',
+                    'Limpieza mueble y estantes',
+                    'Limpieza externa ascensor',
+                    'Limpieza de rieles ascensor',
+                ]
+            },
+            {
+                nombre: 'Ingreso por Escalera',
+                items: [
+                    'Limpieza de puertas de madera',
+                    'Limpieza de escalera de mármol',
+                    'Limpieza de puertas de vidrio',
+                    'Limpieza de timbre y portero',
+                    'Limpieza de ingreso a depósito de bebidas',
+                    'Limpieza de escalera y barandas de madera',
+                    'Limpieza de alfombra',
+                    'Limpieza de baranda de vidrio',
+                    'Limpieza de espejos',
+                ]
+            }
+        ]
+    },
+
+    entrada_banco: {
+        nombre: 'Entrada Banco',
+        icono: '🏦',
+        secciones: [
+            {
+                nombre: 'Vereda y Explanada',
+                items: [
+                    'Limpieza de piso vereda',
+                    'Limpieza de piso explanada',
+                    'Limpieza de vidrios entre ingresos',
+                    'Limpieza de rejas',
+                    'Limpieza vidrios en ingreso',
+                ]
+            }
+        ]
+    },
+
+    lobby: {
+        nombre: 'Lobby',
+        icono: '🏨',
+        secciones: [
+            {
+                nombre: 'Lobby',
+                items: [
+                    'Limpieza de carro de equipaje',
+                    'Limpieza de estantes para productos para la venta',
+                    'Limpieza de espejo',
+                    'Limpieza de vidrios de ascensor',
+                    'Limpieza de rieles de ascensor',
+                    'Limpieza de matafuegos',
+                    'Limpieza general de mesa larga central (mesa y patas)',
+                    'Limpieza de barral de hierro sobre mesada',
+                    'Limpieza general de mesada larga (mesa y patas)',
+                    'Limpieza de sillas y banquetas',
+                    'Control de almohadones living',
+                    'Limpieza de sillones blancos',
+                    'Estado de cortinas (separadoras, baños y Hab. 6 y 7)',
+                    'Limpieza de mesas chicas de apoyo',
+                    'Limpieza de mesa de apoyo',
+                    'Limpieza de biblioteca',
+                    'Limpieza de hogar',
+                    'Limpieza de mesas y sillones de madera',
+                    'Limpieza y estado de velas',
+                    'Limpieza y estado de adornos de pared y jarrones',
+                    'Limpieza de puertas y espejos',
+                    'Limpieza de mueble de joyas',
+                    'Limpieza de adorno separador de Hab. 5',
+                    'Limpieza de mueble de cosmética natural',
+                    'Limpieza y estado de dispenser de agua y agua saborizada',
+                    'Limpieza y cantidad de vasos',
+                    'Limpieza de piso en general',
+                    'Limpieza de luces en paredes y columnas',
+                    'Limpieza y estado de escalera de mármol y alfombra',
+                    'Limpieza puerta de ingreso de vidrio',
+                    'Limpieza de vidrios de escalera',
+                    'Borde de madera de escalera',
+                    'Limpieza de espejos y bordes',
+                    'Limpieza de vidrios y bordes de patio de invierno',
+                    'Control y limpieza de mueble de venta de productos',
+                    'Limpieza con trapo seco de velas de rizoma',
+                    'Limpieza de puertas de vidrio a patio interno',
+                ]
+            },
+            {
+                nombre: 'Baños',
+                items: [
+                    'Limpieza de bacha y grifería',
+                    'Limpieza de espejos y bordes',
+                    'Limpieza de inodoros y bidet',
+                    'Limpieza de hongos en todas las esquinas',
+                    'Limpieza de bajo mesada',
+                    'Limpieza de barrales y apliques en pared',
+                    'Limpieza de frascos de jabón líquido',
+                    'Limpieza de piso en general',
+                    'Cantidad de toallas de mano',
+                    'Estado papel higiénico',
+                    'Limpieza y estado (bolsa) de tacho de basura',
+                ]
+            }
+        ]
+    },
+
+    casa_de_mate: {
+        nombre: 'Casa de Mate',
+        icono: '🧉',
+        secciones: [
+            {
+                nombre: 'Sala',
+                items: [
+                    'Limpieza de teclas de encendido',
+                    'Limpieza de adornos en tubos',
+                    'Limpieza de sillas de caño negro',
+                    'Limpieza y estado de florero y flores',
+                    'Limpieza de las 3 lámparas colgantes (interno y externo), cable y cadena',
+                    'Limpieza de TODOS los estantes y cerramientos de vidrio',
+                    'Limpieza de todos los utensilios',
+                    'Limpieza de frascos',
+                    'Limpieza y estado de todos los productos de yerba',
+                    'Stock de productos a la venta',
+                    'Limpieza y estado de Pava eléctrica, termo, mate, bombilla, azucarera, yerbera y cuencos',
+                    'Estado y que siempre haya instructivos "Como preparar un buen Mate" en ambos idiomas',
+                    'Estado y que siempre estén los 4 libros expuestos',
+                    'Limpieza de las 3 luces que están sobre la pared de cuadrados de madera',
+                    'Limpieza de la pared de cuadrados de madera',
+                    'Limpieza de marcos y vidrios de ventanas',
+                    'Limpieza de puertas de ingreso',
+                ]
+            },
+            {
+                nombre: 'Back',
+                items: [
+                    'Limpieza de los estantes debajo del mostrador',
+                    'Orden y limpieza de productos a la venta (mates, bombillas, paquetes de yerba, etc.)',
+                    'Orden y estado de las radios y sus bases',
+                ]
+            }
+        ]
+    },
+
+    habitaciones: {
+        nombre: 'Habitaciones',
+        icono: '🛏️',
+        requiereHabitacion: true,
+        secciones: [
+            {
+                nombre: 'Baño',
+                items: [
+                    'Limpieza picaporte, puerta y marco de puerta',
+                    'Limpieza de pisos',
+                    'Limpieza de luces (apliques y lámparas)',
+                    'Limpieza de espejos y marcos',
+                    'Limpieza tomacorriente, enchufes y teclas',
+                    'Limpieza ganchos, barrales y toalleros',
+                    'Limpieza bacha y grifos',
+                    'Limpieza y control de cantidad de jabón líquido y crema',
+                    'Limpieza mesada y bajo mesada',
+                    'Limpieza y ubicación de vasos',
+                    'Control funcionamiento y estado de secadores de pelo',
+                    'Limpieza y armado de canasta de amenities',
+                    'Control canasta de secador de pelo',
+                    'Limpieza mampara de vidrio',
+                    'Limpieza y estado de toallas, batas y pantuflas',
+                    'Limpieza flor de ducha',
+                    'Limpieza grifería de ducha, inodoro, bidet, jabonera y llave de paso',
+                    'Control cantidad de shampoo y acondicionador',
+                    'Limpieza de recipientes de shampoo y acondicionador',
+                    'Limpieza de resumidero',
+                    'Limpieza de hongos en esquineros y juntas',
+                    'Limpieza inodoro y bidet',
+                    'Limpieza atrás de inodoro y bidet',
+                    'Limpieza y bolsa vacía de basurero',
+                    'Limpieza de jacuzzi y bordes',
+                    'Limpieza de grifería completa de jacuzzi',
+                    'Limpieza y estado de cuencos con sales para jacuzzi',
+                ]
+            },
+            {
+                nombre: 'Habitación',
+                items: [
+                    'Limpieza general',
+                    'Limpieza y estado de ropa blanca (batas, toallones, pantuflas, ropa de cama)',
+                    'Limpieza de respaldar de cama',
+                    'Limpieza piso',
+                    'Limpieza puerta',
+                    'Limpieza rejilla y resumideros',
+                    'Limpieza vidrios',
+                    'Limpieza y funcionamiento de aires acondicionados',
+                    'Limpieza de marco y espejos de toda la habitación',
+                    'Limpieza de marcos de ventanas',
+                    'Limpieza de zócalos',
+                    'Limpieza de apliques y luces',
+                    'Limpieza y estado de cortinas',
+                    'Control y ubicación de control remoto de A/C y soporte',
+                    'Limpieza de teclas encendido y apagado de luces',
+                    'Limpieza de toma de aire',
+                    'Revisar manchas de pintura, unión de empapelados, mesas de madera, esquinas de mármoles. Reportar',
+                    'Limpieza de balcones (piso, vidrio, tela de araña, baranda)',
+                    'Limpiar enchufes y toma corriente',
+                    'Ordenar cables',
+                    'Limpieza mesa de luz izquierda (cajones, superficie y patas)',
+                    'Limpieza mesa de luz derecha (cajones, superficie y patas)',
+                    'Controlar que no haya nada dentro de las mesas de luz, placard',
+                    'Limpieza velador mesa de luz',
+                    'Estado y ubicación de carteles',
+                    'Ubicación cartel de bienvenida',
+                    'Limpieza y ubicación de vajilla',
+                    'Estado, funcionamiento y limpieza de base y teléfono',
+                    'Control, limpieza y vista de la cama armada',
+                    'Control de almohadas',
+                    'Aspirar piso debajo de la cama',
+                    'Limpieza escritorio',
+                    'Sillas de escritorio',
+                    'Limpieza de basurero',
+                    'Estado y ubicación carta "menú de almohadas"',
+                    'Limpieza patas de escritorio',
+                    'Limpieza cajonera de escritorio',
+                    'Limpieza lámpara escritorio',
+                    'Limpieza y ubicación de matera y yerbera',
+                    'Limpieza y ubicación pava eléctrica',
+                    'Limpieza cafetera nespresso',
+                    'Limpieza y ubicación tazas y cápsulas',
+                    'Ubicación de carteles',
+                    'Limpieza bandeja set de mate',
+                    'Rellenar pocillos set de mate',
+                    'Controlar estado de maní y cortesías',
+                    'Limpieza general de placard',
+                    'Limpieza de cajones y estantes',
+                    'Controlar cantidad y que todas las perchas sean iguales',
+                    'Aspirado de rieles',
+                    'Limpieza frigobar',
+                    'Controlar fecha de vencimiento de productos de frigobar',
+                    'Limpieza y estado de valijero',
+                    'Estado y ubicación de planilla de lavandería',
+                    'Limpieza de caja de seguridad',
+                    'Estado, funcionamiento y limpieza de control remoto TV',
+                    'Limpieza de televisor',
+                    'Limpieza detrás del televisor',
+                ]
+            }
+        ]
+    },
+
+    patio_interno: {
+        nombre: 'Patio Interno',
+        icono: '🌿',
+        secciones: [
+            {
+                nombre: 'Patio',
+                items: [
+                    'Control limpieza techos (arriba de Hab. 8) y techo de vidrio (arriba Hab. 9, 10 y 11)',
+                    'Limpieza de puerta de vidrio a Lobby',
+                    'Limpieza de mesas y sillas de caño negro',
+                    'Limpieza de puertas y ventanas y bordes de ventanas de habitaciones 8, 9, 10 y ambas de la Hab. 11',
+                    'Limpieza de zócalo de todo el patio interno',
+                    'Control de estado de plantas y macetas',
+                    'Limpieza de escalera que sube a terraza',
+                    'Limpieza de escalera que baja a Suite Azur y patio de la misma',
+                    'Control de estado de desagües',
+                    'Limpieza de puerta ingreso a office',
+                    'Limpieza de piso en general',
+                    'Limpieza de luces exteriores paredes',
+                    'Limpieza de fanales y encendido de velas',
+                    'Disposición de sillas de hierro, siempre listas para recibir al huésped',
+                    'Control que no queden elementos de limpieza a la vista',
+                    'Limpieza de parte de abajo del puente (tela de araña)',
+                ]
+            }
+        ]
+    },
+
+    tercer_piso: {
+        nombre: 'Tercer Piso / Terraza',
+        icono: '🏙️',
+        secciones: [
+            {
+                nombre: 'Terraza',
+                items: [
+                    'Limpieza escalera que sube hasta Hab. 12',
+                    'Limpieza de barandas de escalera',
+                    'Limpieza piso patio externo a Hab. 12',
+                    'Limpieza de mesas y sillas de caño negro',
+                    'Limpieza de luces pasillos',
+                    'Limpieza de piso rojo hasta entrada Hab. 15',
+                    'Limpieza de baños terraza',
+                    'Limpieza de puertas, ventanas y bordes de ventanas de habitaciones 12, 14, 15 y 16',
+                    'Limpieza de ingreso/salida ascensor',
+                    'Limpieza de vidrios ingreso/salida ascensor',
+                    'Limpieza general y rieles ascensor',
+                    'Control de limpieza de telarañas',
+                    'Limpieza de obra de arte (exterior Hab. 15)',
+                    'Limpieza exterior ventana de baño Hab. 16',
+                    'Limpieza completa ventana Hab. 15',
+                    'Limpieza de ceniceros',
+                    'Limpieza de piso pasarela de vidrio',
+                    'Limpieza de vidrios de pasarela',
+                    'Limpieza ingreso a salón de eventos',
+                    'Limpieza puerta de ingreso salón',
+                    'Limpieza puerta de ingreso La Cava',
+                    'Limpieza de sillones',
+                    'Limpieza de mesas y sillas',
+                    'Limpieza de reposeras',
+                    'Limpieza macetas grandes blancas',
+                ]
+            }
+        ]
+    },
+
+    gimnasio: {
+        nombre: 'Gimnasio',
+        icono: '🏋️',
+        secciones: [
+            {
+                nombre: 'Gimnasio',
+                items: [
+                    'Limpieza de mueble antiguo',
+                    'Control y limpieza de bandeja frutas',
+                    'Control de lavado y quitado de etiquetas de frutas',
+                    'Limpieza de piso',
+                    'Control y reposición de toallas',
+                    'Control y reposición de vasos',
+                    'Limpieza de vidrios interior/exterior',
+                    'Orden de elementos del gimnasio y limpieza de los mismos',
+                    'Limpieza de aire acondicionado',
+                    'Limpieza de máquinas',
+                ]
+            }
+        ]
+    },
+
+    spa: {
+        nombre: 'Spa',
+        icono: '💆',
+        secciones: [
+            {
+                nombre: 'Recepción',
+                items: [
+                    'Limpieza de mueble para venta de productos',
+                    'Limpieza de pisos',
+                    'Limpieza de asientos',
+                    'Limpieza de escalera de entrada',
+                    'Limpieza de vidrios',
+                    'Limpieza rincones',
+                    'Limpieza de escritorio',
+                    'Orden del espacio de trabajo del escritorio de recepción',
+                    'Control de puerta que conecta al área de servicio',
+                    'Control de la vela de recepción (Encendida/apagada)',
+                    'Control de puertas del armario que va para sala de masajes',
+                    'Limpieza de fanales',
+                    'Limpieza de parlantes',
+                    'Limpieza de la pileta de huéspedes',
+                    'Limpieza de toallas para pileta de huéspedes',
+                    'Limpieza de almohadones de las hamacas',
+                    'Control de volumen de la música',
+                    'Limpieza de cuadro de premio',
+                    'Control que los lockers estén completos con toalla y bolsa',
+                    'Limpieza adoquines de madera sobre pared de entrada',
+                    'Limpieza lámparas colgantes',
+                    'Limpieza baranda pileta pública',
+                    'Control de agua con fruta (cítricos) y hielo en recepción',
+                ]
+            },
+            {
+                nombre: 'Baños / Vestuarios',
+                items: [
+                    'Limpieza de duchas, mamparas y grifería',
+                    'Limpieza de espejos y bordes',
+                    'Limpieza de inodoros y bachas',
+                    'Limpieza de hongos en todas las esquinas',
+                    'Limpieza de mesada',
+                    'Limpieza de barrales y apliques en pared',
+                    'Limpieza de frascos de shampoo/crema de enjuague/crema corporal',
+                    'Limpieza de las ventilaciones de los baños',
+                    'Limpieza de alfombras',
+                    'Orden y limpieza de decoración y distribución general de elementos del baño',
+                    'Orden de papel higiénico',
+                    'Limpieza y orden de lockers',
+                    'Control de secador de pelo, toallitas y canastos en los 3 baños',
+                    'Control de floreros en todos los baños',
+                    'Control tachos de basura',
+                    'Control de la no presencia de toallas usadas',
+                ]
+            },
+            {
+                nombre: 'Sala de Masajes 1',
+                items: [
+                    'Limpieza de piso',
+                    'Limpieza de mesadas',
+                    'Limpieza de ventiladores',
+                    'Limpiar vigas metálicas',
+                    'Limpieza y estado de sillas/banquetas de trabajo',
+                    'Control de estado de camillas',
+                    'Control y estado de cortinas',
+                    'Control y limpieza de manchas de aceite en bachas de spa',
+                    'Control distribución de elementos dentro de sala de masajes',
+                    'Control de temperatura de la sala',
+                    'Control de volumen de la música',
+                    'Control de orden y limpieza de la sala',
+                    'Control de que las velas estén encendidas',
+                    'Control que la sala esté equipada con los productos necesarios para los masajes',
+                    'Limpieza de vidrios y fanales que cuelgan de las puertas',
+                    'Control periódico de estado de toallas, fundas, antifaz de semillas, mantas y ropa blanca en general del spa',
+                    'Limpieza ventiladores',
+                ]
+            },
+            {
+                nombre: 'Sala de Masajes 2',
+                items: [
+                    'Limpieza de piso',
+                    'Limpieza de mesadas',
+                    'Limpieza de ventiladores',
+                    'Limpiar vigas metálicas',
+                    'Limpieza y estado de sillas/banquetas de trabajo',
+                    'Control de estado de camillas',
+                    'Control y estado de cortinas',
+                    'Control y limpieza de manchas de aceite en bachas de spa',
+                    'Control distribución de elementos dentro de sala de masajes',
+                    'Control de temperatura de la sala',
+                    'Control de volumen de la música',
+                    'Control de orden y limpieza de la sala',
+                    'Control de que las velas estén encendidas',
+                    'Control que la sala esté equipada con los productos necesarios para los masajes',
+                    'Limpieza de vidrios y fanales que cuelgan de las puertas',
+                    'Control periódico de estado de toallas, fundas, antifaz de semillas, mantas y ropa blanca en general del spa',
+                    'Limpieza ventiladores',
+                ]
+            },
+            {
+                nombre: 'Circuito de Aguas',
+                items: [
+                    'Limpieza piso de todo el circuito',
+                    'Limpieza mármol con jabón neutro',
+                    'Limpieza estación de hielo',
+                    'Limpieza de sauna y asientos',
+                    'Limpieza duchas horizontales y bajo los asientos',
+                    'Limpieza sector 7',
+                    'Limpieza pediluvios y asientos',
+                    'Limpieza de bañeras',
+                    'Limpieza de los rincones',
+                    'Limpieza hongos en las piletas',
+                    'Limpieza barandas, griferías y duchas',
+                    'Limpieza zócalos',
+                    'Limpieza de sala de relax, control abajo de las piedras, control orbitario',
+                    'Limpieza vidrios y puertas',
+                    'Limpieza de fanales',
+                    'Control de estado de vajilla y cortesías',
+                    'Control de obra de arte',
+                    'Control del funcionamiento y limpieza de todos los botones',
+                    'Control de encendido de todas las velas del recorrido (12 en total)',
+                    'Limpieza dentro de los fanales de hierro',
+                    'Control de la no presencia de toallas usadas',
+                ]
+            }
+        ]
+    },
+};
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+const calcularPuntaje = (respuestas) => {
+    const valores = Object.values(respuestas).filter(v => v !== null && v !== undefined);
+    if (valores.length === 0) return null;
+    const suma = valores.reduce((acc, v) => {
+        if (v === 'bien') return acc + 100;
+        if (v === 'regular') return acc + 50;
+        if (v === 'mal') return acc + 0;
+        return acc;
+    }, 0);
+    return Math.round(suma / valores.length);
+};
+
+const etiquetaPuntaje = (p) => {
+    if (p === null) return { texto: '—', clase: 'text-gray-400' };
+    if (p >= 90) return { texto: `${p} — Excelente`, clase: 'score-excellent' };
+    if (p >= 75) return { texto: `${p} — Bueno`, clase: 'score-good' };
+    if (p >= 60) return { texto: `${p} — Regular`, clase: 'score-regular' };
+    return { texto: `${p} — Deficiente`, clase: 'score-poor' };
+};
+
+const formatFecha = (ts) => {
+    if (!ts) return '—';
+    return new Date(ts).toLocaleString('es-AR', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+    });
+};
+
+const badgePuntaje = (p) => {
+    if (p === null || p === undefined) return 'bg-gray-100 text-gray-500';
+    if (p >= 90) return 'bg-green-100 text-green-800';
+    if (p >= 75) return 'bg-blue-100 text-blue-800';
+    if (p >= 60) return 'bg-yellow-100 text-yellow-800';
+    return 'bg-red-100 text-red-800';
+};
+
+// ─── COMPONENTE PRINCIPAL ────────────────────────────────────────────────────
+function App() {
+    const [user, setUser] = useState(null);
+    const [vista, setVista] = useState('inicio'); // inicio | checklist | historial | tareas
+    const [seccionActiva, setSeccionActiva] = useState(null);
+    const [habitacionActiva, setHabitacionActiva] = useState(null);
+    const [controles, setControles] = useState([]);
+    const [tareas, setTareas] = useState([]);
+    const [loginError, setLoginError] = useState('');
+
+    // Cargar datos de Firebase
+    useEffect(() => {
+        if (!db || !user) return;
+        const refControles = db.ref('controles');
+        refControles.on('value', snap => {
+            const data = snap.val();
+            if (data) {
+                const arr = Object.entries(data).map(([id, v]) => ({ id, ...v }));
+                setControles(arr.sort((a, b) => b.timestamp - a.timestamp));
+            } else {
+                setControles([]);
+            }
+        });
+        const refTareas = db.ref('tareas');
+        refTareas.on('value', snap => {
+            const data = snap.val();
+            if (data) {
+                const arr = Object.entries(data).map(([id, v]) => ({ id, ...v }));
+                setTareas(arr.sort((a, b) => b.timestamp - a.timestamp));
+            } else {
+                setTareas([]);
+            }
+        });
+        return () => { refControles.off(); refTareas.off(); };
+    }, [user]);
+
+    const handleLogin = (username, password) => {
+        const found = USERS.find(u => u.username === username && u.password === password);
+        if (found) {
+            setUser(found);
+            setLoginError('');
+        } else {
+            setLoginError('Usuario o contraseña incorrectos');
+        }
+    };
+
+    if (!user) return React.createElement(LoginScreen, { onLogin: handleLogin, error: loginError });
+
+    return React.createElement('div', { className: 'min-h-screen bg-gray-50' },
+        // Header
+        React.createElement('header', { className: 'azur-blue text-white px-4 py-3 flex items-center justify-between shadow-lg' },
+            React.createElement('div', null,
+                React.createElement('h1', { className: 'text-lg font-bold' }, 'Azur — Control de Calidad'),
+                React.createElement('p', { className: 'text-xs opacity-75' }, user.name)
+            ),
+            React.createElement('div', { className: 'flex gap-2' },
+                React.createElement('button', {
+                    onClick: () => setVista('inicio'),
+                    className: `px-3 py-1.5 rounded text-sm font-medium ${vista === 'inicio' ? 'bg-white text-blue-900' : 'bg-white/20 hover:bg-white/30'}`
+                }, '🏠 Inicio'),
+                React.createElement('button', {
+                    onClick: () => setVista('historial'),
+                    className: `px-3 py-1.5 rounded text-sm font-medium ${vista === 'historial' ? 'bg-white text-blue-900' : 'bg-white/20 hover:bg-white/30'}`
+                }, '📋 Historial'),
+                React.createElement('button', {
+                    onClick: () => setVista('tareas'),
+                    className: `px-3 py-1.5 rounded text-sm font-medium relative ${vista === 'tareas' ? 'bg-white text-blue-900' : 'bg-white/20 hover:bg-white/30'}`
+                },
+                    '⚠️ Tareas',
+                    tareas.filter(t => !t.resuelta).length > 0 ? React.createElement('span', {
+                        className: 'absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center'
+                    }, tareas.filter(t => !t.resuelta).length) : null
+                ),
+                React.createElement('button', {
+                    onClick: () => { setUser(null); setVista('inicio'); },
+                    className: 'px-3 py-1.5 rounded text-sm bg-white/20 hover:bg-white/30'
+                }, 'Salir')
+            )
+        ),
+
+        // Contenido
+        vista === 'inicio' ? React.createElement(Inicio, {
+            user, controles, tareas,
+            onIniciarControl: (seccion, hab) => {
+                setSeccionActiva(seccion);
+                setHabitacionActiva(hab || null);
+                setVista('checklist');
+            }
+        }) : null,
+
+        vista === 'checklist' && seccionActiva ? React.createElement(ChecklistView, {
+            user, seccion: seccionActiva, habitacion: habitacionActiva,
+            onFinalizar: () => { setVista('inicio'); setSeccionActiva(null); setHabitacionActiva(null); }
+        }) : null,
+
+        vista === 'historial' ? React.createElement(HistorialView, { controles, tareas }) : null,
+        vista === 'tareas' ? React.createElement(TareasView, { tareas, user }) : null
+    );
+}
+
+// ─── LOGIN ───────────────────────────────────────────────────────────────────
+function LoginScreen({ onLogin, error }) {
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+
+    return React.createElement('div', { className: 'min-h-screen azur-blue flex items-center justify-center p-4' },
+        React.createElement('div', { className: 'bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm' },
+            React.createElement('div', { className: 'text-center mb-8' },
+                React.createElement('div', { className: 'text-4xl mb-3' }, '✅'),
+                React.createElement('h1', { className: 'text-2xl font-bold azur-blue-text' }, 'Azur Hotel & Spa'),
+                React.createElement('p', { className: 'text-gray-500 text-sm mt-1' }, 'Control de Calidad')
+            ),
+            React.createElement('div', { className: 'space-y-4' },
+                React.createElement('input', {
+                    type: 'text',
+                    placeholder: 'Usuario',
+                    value: username,
+                    onChange: e => setUsername(e.target.value),
+                    className: 'w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400',
+                    onKeyDown: e => e.key === 'Enter' && onLogin(username, password)
+                }),
+                React.createElement('input', {
+                    type: 'password',
+                    placeholder: 'Contraseña',
+                    value: password,
+                    onChange: e => setPassword(e.target.value),
+                    className: 'w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400',
+                    onKeyDown: e => e.key === 'Enter' && onLogin(username, password)
+                }),
+                error ? React.createElement('p', { className: 'text-red-500 text-sm text-center' }, error) : null,
+                React.createElement('button', {
+                    onClick: () => onLogin(username, password),
+                    className: 'w-full azur-blue text-white py-3 rounded-xl font-semibold hover:opacity-90 transition'
+                }, 'Ingresar')
+            )
+        )
+    );
+}
+
+// ─── INICIO ──────────────────────────────────────────────────────────────────
+function Inicio({ user, controles, tareas, onIniciarControl }) {
+    const [mostrarHabs, setMostrarHabs] = useState(false);
+
+    const tareasAbiertas = tareas.filter(t => !t.resuelta).length;
+    const controlesHoy = controles.filter(c => {
+        const hoy = new Date();
+        const fecha = new Date(c.timestamp);
+        return fecha.toDateString() === hoy.toDateString();
+    }).length;
+
+    const ultimosControles = controles.slice(0, 5);
+
+    return React.createElement('div', { className: 'max-w-4xl mx-auto p-4' },
+        // Stats
+        React.createElement('div', { className: 'grid grid-cols-3 gap-3 mb-6 mt-4' },
+            React.createElement('div', { className: 'bg-white rounded-xl shadow p-4 text-center' },
+                React.createElement('div', { className: 'text-2xl font-bold azur-blue-text' }, controlesHoy),
+                React.createElement('div', { className: 'text-xs text-gray-500 mt-1' }, 'Controles hoy')
+            ),
+            React.createElement('div', { className: 'bg-white rounded-xl shadow p-4 text-center' },
+                React.createElement('div', { className: `text-2xl font-bold ${tareasAbiertas > 0 ? 'text-red-600' : 'text-green-600'}` }, tareasAbiertas),
+                React.createElement('div', { className: 'text-xs text-gray-500 mt-1' }, 'Tareas pendientes')
+            ),
+            React.createElement('div', { className: 'bg-white rounded-xl shadow p-4 text-center' },
+                React.createElement('div', { className: 'text-2xl font-bold text-gray-700' }, controles.length),
+                React.createElement('div', { className: 'text-xs text-gray-500 mt-1' }, 'Total controles')
+            )
+        ),
+
+        // Secciones
+        React.createElement('h2', { className: 'font-bold text-gray-700 mb-3 text-sm uppercase tracking-wide' }, 'Iniciar control'),
+        React.createElement('div', { className: 'grid grid-cols-2 gap-3 mb-6 sm:grid-cols-3' },
+            // Habitaciones (especial)
+            React.createElement('div', { className: 'col-span-2 sm:col-span-3' },
+                React.createElement('button', {
+                    onClick: () => setMostrarHabs(!mostrarHabs),
+                    className: 'w-full bg-white rounded-xl shadow p-4 flex items-center justify-between hover:shadow-md transition text-left'
+                },
+                    React.createElement('div', { className: 'flex items-center gap-3' },
+                        React.createElement('span', { className: 'text-2xl' }, '🛏️'),
+                        React.createElement('div', null,
+                            React.createElement('div', { className: 'font-semibold text-gray-800' }, 'Habitaciones'),
+                            React.createElement('div', { className: 'text-xs text-gray-500' }, '16 habitaciones')
+                        )
+                    ),
+                    React.createElement('span', { className: 'text-gray-400' }, mostrarHabs ? '▲' : '▼')
+                ),
+                mostrarHabs ? React.createElement('div', { className: 'mt-2 grid grid-cols-4 gap-2 sm:grid-cols-8' },
+                    HABITACIONES.map(h => React.createElement('button', {
+                        key: h.numero,
+                        onClick: () => onIniciarControl('habitaciones', h),
+                        className: 'bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg p-2 text-center transition'
+                    },
+                        React.createElement('div', { className: 'font-bold text-blue-900 text-sm' }, `#${h.numero}`),
+                        React.createElement('div', { className: 'text-xs text-blue-600' }, h.categoria)
+                    ))
+                ) : null
+            ),
+
+            // Otras secciones
+            Object.entries(CHECKLISTS)
+                .filter(([key]) => key !== 'habitaciones')
+                .map(([key, seccion]) => React.createElement('button', {
+                    key,
+                    onClick: () => onIniciarControl(key),
+                    className: 'bg-white rounded-xl shadow p-4 flex flex-col items-center gap-2 hover:shadow-md transition'
+                },
+                    React.createElement('span', { className: 'text-2xl' }, seccion.icono),
+                    React.createElement('span', { className: 'text-sm font-medium text-gray-700 text-center' }, seccion.nombre)
+                ))
+        ),
+
+        // Últimos controles
+        ultimosControles.length > 0 ? React.createElement('div', null,
+            React.createElement('h2', { className: 'font-bold text-gray-700 mb-3 text-sm uppercase tracking-wide' }, 'Últimos controles'),
+            React.createElement('div', { className: 'space-y-2' },
+                ultimosControles.map(c => {
+                    const { texto, clase } = etiquetaPuntaje(c.puntaje);
+                    return React.createElement('div', {
+                        key: c.id,
+                        className: 'bg-white rounded-xl shadow p-3 flex items-center justify-between'
+                    },
+                        React.createElement('div', null,
+                            React.createElement('div', { className: 'font-medium text-gray-800 text-sm' },
+                                c.seccionNombre,
+                                c.habitacion ? ` — Hab. #${c.habitacion.numero}` : ''
+                            ),
+                            React.createElement('div', { className: 'text-xs text-gray-500' },
+                                `${c.userName} · ${formatFecha(c.timestamp)}`
+                            )
+                        ),
+                        React.createElement('div', { className: `text-sm font-bold ${clase}` }, texto)
+                    );
+                })
+            )
+        ) : null
+    );
+}
+
+// ─── CHECKLIST VIEW ──────────────────────────────────────────────────────────
+function ChecklistView({ user, seccion: seccionKey, habitacion, onFinalizar }) {
+    const config = CHECKLISTS[seccionKey];
+    const totalItems = config.secciones.reduce((acc, s) => acc + s.items.length, 0);
+
+    const [respuestas, setRespuestas] = useState({});
+    const [observaciones, setObservaciones] = useState({});
+    const [guardando, setGuardando] = useState(false);
+    const [confirmando, setConfirmando] = useState(false);
+
+    const respondidos = Object.values(respuestas).filter(v => v !== null).length;
+    const puntaje = calcularPuntaje(respuestas);
+    const { texto: textoP, clase: claseP } = etiquetaPuntaje(puntaje);
+
+    const setRespuesta = (key, valor) => {
+        setRespuestas(prev => ({ ...prev, [key]: valor }));
+    };
+
+    const setObs = (key, valor) => {
+        setObservaciones(prev => ({ ...prev, [key]: valor }));
+    };
+
+    const handleFinalizar = async () => {
+        if (!confirmando) { setConfirmando(true); return; }
+        setGuardando(true);
+
+        const control = {
+            seccion: seccionKey,
+            seccionNombre: config.nombre,
+            habitacion: habitacion || null,
+            userId: user.id,
+            userName: user.name,
+            timestamp: Date.now(),
+            puntaje,
+            respuestas,
+            observaciones,
+        };
+
+        if (db) {
+            const ref = await db.ref('controles').push(control);
+            const controlId = ref.key;
+
+            // Generar tareas para ítems con mal o regular
+            const tareasNuevas = [];
+            config.secciones.forEach(sec => {
+                sec.items.forEach((item, idx) => {
+                    const key = `${sec.nombre}__${idx}`;
+                    const resp = respuestas[key];
+                    if (resp === 'mal' || resp === 'regular') {
+                        tareasNuevas.push({
+                            controlId,
+                            seccion: seccionKey,
+                            seccionNombre: config.nombre,
+                            habitacion: habitacion || null,
+                            seccionItem: sec.nombre,
+                            item,
+                            estado: resp,
+                            observacion: observaciones[key] || '',
+                            timestamp: Date.now(),
+                            resuelta: false,
+                            area: null,
+                        });
+                    }
+                });
+            });
+
+            for (const tarea of tareasNuevas) {
+                await db.ref('tareas').push(tarea);
+            }
+        }
+
+        setGuardando(false);
+        onFinalizar();
+    };
+
+    return React.createElement('div', { className: 'max-w-2xl mx-auto p-4' },
+        // Header del checklist
+        React.createElement('div', { className: 'bg-white rounded-xl shadow p-4 mb-4 flex items-center justify-between' },
+            React.createElement('div', null,
+                React.createElement('div', { className: 'flex items-center gap-2' },
+                    React.createElement('span', { className: 'text-2xl' }, config.icono),
+                    React.createElement('h2', { className: 'font-bold text-gray-800 text-lg' }, config.nombre),
+                    habitacion ? React.createElement('span', { className: 'bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-medium' },
+                        `Hab. #${habitacion.numero} — ${habitacion.categoria}`
+                    ) : null
+                ),
+                React.createElement('p', { className: 'text-sm text-gray-500 mt-1' },
+                    `${respondidos}/${totalItems} ítems completados`
+                )
+            ),
+            puntaje !== null ? React.createElement('div', { className: 'text-right' },
+                React.createElement('div', { className: `text-xl font-bold ${claseP}` }, textoP)
+            ) : null
+        ),
+
+        // Secciones
+        config.secciones.map(sec => React.createElement('div', { key: sec.nombre, className: 'mb-4' },
+            React.createElement('h3', { className: 'font-semibold text-gray-700 mb-2 px-1' }, sec.nombre),
+            React.createElement('div', { className: 'space-y-2' },
+                sec.items.map((item, idx) => {
+                    const key = `${sec.nombre}__${idx}`;
+                    const resp = respuestas[key];
+                    let claseItem = 'item-pending';
+                    if (resp === 'bien') claseItem = 'item-bien';
+                    if (resp === 'regular') claseItem = 'item-regular';
+                    if (resp === 'mal') claseItem = 'item-mal';
+
+                    return React.createElement('div', { key: key, className: `bg-white rounded-xl p-3 shadow-sm ${claseItem}` },
+                        React.createElement('p', { className: 'text-sm text-gray-800 mb-2' }, item),
+                        React.createElement('div', { className: 'flex gap-2 flex-wrap' },
+                            React.createElement('button', {
+                                onClick: () => setRespuesta(key, 'bien'),
+                                className: `px-3 py-1.5 rounded-lg text-xs font-semibold transition ${resp === 'bien' ? 'bg-green-500 text-white' : 'bg-green-100 text-green-700 hover:bg-green-200'}`
+                            }, '✅ Bien'),
+                            React.createElement('button', {
+                                onClick: () => setRespuesta(key, 'regular'),
+                                className: `px-3 py-1.5 rounded-lg text-xs font-semibold transition ${resp === 'regular' ? 'bg-yellow-500 text-white' : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'}`
+                            }, '⚠️ Regular'),
+                            React.createElement('button', {
+                                onClick: () => setRespuesta(key, 'mal'),
+                                className: `px-3 py-1.5 rounded-lg text-xs font-semibold transition ${resp === 'mal' ? 'bg-red-500 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200'}`
+                            }, '❌ Mal'),
+                            (resp === 'regular' || resp === 'mal') ? React.createElement('input', {
+                                type: 'text',
+                                placeholder: 'Observación...',
+                                value: observaciones[key] || '',
+                                onChange: e => setObs(key, e.target.value),
+                                className: 'flex-1 min-w-32 px-2 py-1 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400'
+                            }) : null
+                        )
+                    );
+                })
+            )
+        )),
+
+        // Botones finales
+        React.createElement('div', { className: 'flex gap-3 mt-6 mb-8' },
+            React.createElement('button', {
+                onClick: onFinalizar,
+                className: 'flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-300'
+            }, 'Cancelar'),
+            React.createElement('button', {
+                onClick: handleFinalizar,
+                disabled: guardando || respondidos === 0,
+                className: `flex-1 azur-blue text-white py-3 rounded-xl font-semibold hover:opacity-90 disabled:opacity-50 ${confirmando ? 'ring-2 ring-offset-2 ring-blue-400' : ''}`
+            }, guardando ? 'Guardando...' : confirmando ? `Confirmar — ${textoP}` : `Finalizar control`)
+        )
+    );
+}
+
+// ─── HISTORIAL ───────────────────────────────────────────────────────────────
+function HistorialView({ controles, tareas }) {
+    const [filtroSeccion, setFiltroSeccion] = useState('todas');
+    const [filtroFecha, setFiltroFecha] = useState('');
+
+    const secciones = ['todas', ...Object.keys(CHECKLISTS)];
+
+    const filtrados = controles.filter(c => {
+        if (filtroSeccion !== 'todas' && c.seccion !== filtroSeccion) return false;
+        if (filtroFecha) {
+            const fecha = new Date(c.timestamp).toISOString().split('T')[0];
+            if (fecha !== filtroFecha) return false;
+        }
+        return true;
+    });
+
+    return React.createElement('div', { className: 'max-w-4xl mx-auto p-4' },
+        React.createElement('h2', { className: 'font-bold text-gray-700 mb-4 text-lg' }, 'Historial de controles'),
+
+        // Filtros
+        React.createElement('div', { className: 'flex gap-3 mb-4 flex-wrap' },
+            React.createElement('select', {
+                value: filtroSeccion,
+                onChange: e => setFiltroSeccion(e.target.value),
+                className: 'px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400'
+            },
+                secciones.map(s => React.createElement('option', { key: s, value: s },
+                    s === 'todas' ? 'Todas las secciones' : CHECKLISTS[s]?.nombre || s
+                ))
+            ),
+            React.createElement('input', {
+                type: 'date',
+                value: filtroFecha,
+                onChange: e => setFiltroFecha(e.target.value),
+                className: 'px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400'
+            }),
+            (filtroSeccion !== 'todas' || filtroFecha) ? React.createElement('button', {
+                onClick: () => { setFiltroSeccion('todas'); setFiltroFecha(''); },
+                className: 'px-3 py-2 bg-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-300'
+            }, '✕ Limpiar') : null
+        ),
+
+        filtrados.length === 0 ? React.createElement('div', { className: 'bg-white rounded-xl shadow p-8 text-center text-gray-400' },
+            React.createElement('div', { className: 'text-4xl mb-2' }, '📋'),
+            React.createElement('p', null, 'No hay controles registrados')
+        ) : React.createElement('div', { className: 'space-y-3' },
+            filtrados.map(c => {
+                const tareasControl = tareas.filter(t => t.controlId === c.id);
+                const tareasAbiertas = tareasControl.filter(t => !t.resuelta).length;
+                const { texto, clase } = etiquetaPuntaje(c.puntaje);
+
+                return React.createElement('div', { key: c.id, className: 'bg-white rounded-xl shadow p-4' },
+                    React.createElement('div', { className: 'flex items-start justify-between mb-2' },
+                        React.createElement('div', null,
+                            React.createElement('div', { className: 'font-semibold text-gray-800' },
+                                c.seccionNombre,
+                                c.habitacion ? ` — Hab. #${c.habitacion.numero} (${c.habitacion.categoria})` : ''
+                            ),
+                            React.createElement('div', { className: 'text-sm text-gray-500' },
+                                `${c.userName} · ${formatFecha(c.timestamp)}`
+                            )
+                        ),
+                        React.createElement('div', { className: `text-sm font-bold ${clase}` }, texto)
+                    ),
+                    tareasAbiertas > 0 ? React.createElement('div', { className: 'mt-2 flex items-center gap-1' },
+                        React.createElement('span', { className: 'bg-red-100 text-red-700 text-xs px-2 py-0.5 rounded-full' },
+                            `${tareasAbiertas} tarea${tareasAbiertas > 1 ? 's' : ''} pendiente${tareasAbiertas > 1 ? 's' : ''}`
+                        )
+                    ) : tareasControl.length > 0 ? React.createElement('span', { className: 'bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full' },
+                        'Todas las tareas resueltas'
+                    ) : null
+                );
+            })
+        )
+    );
+}
+
+// ─── TAREAS ──────────────────────────────────────────────────────────────────
+function TareasView({ tareas, user }) {
+    const [filtro, setFiltro] = useState('pendientes'); // pendientes | todas | resueltas
+    const [resolviendo, setResolviendo] = useState(null);
+    const [notaResolucion, setNotaResolucion] = useState('');
+    const [areaAsignada, setAreaAsignada] = useState('');
+
+    const filtradas = tareas.filter(t => {
+        if (filtro === 'pendientes') return !t.resuelta;
+        if (filtro === 'resueltas') return t.resuelta;
+        return true;
+    });
+
+    const handleResolver = async (tarea) => {
+        if (!db) return;
+        await db.ref(`tareas/${tarea.id}`).update({
+            resuelta: true,
+            resueltaPor: user.name,
+            resueltaTimestamp: Date.now(),
+            notaResolucion,
+            areaAsignada,
+        });
+        setResolviendo(null);
+        setNotaResolucion('');
+        setAreaAsignada('');
+    };
+
+    const handleAsignarArea = async (tarea, area) => {
+        if (!db) return;
+        await db.ref(`tareas/${tarea.id}`).update({ area });
+    };
+
+    return React.createElement('div', { className: 'max-w-4xl mx-auto p-4' },
+        React.createElement('h2', { className: 'font-bold text-gray-700 mb-4 text-lg' }, 'Tareas pendientes'),
+
+        // Filtros
+        React.createElement('div', { className: 'flex gap-2 mb-4' },
+            ['pendientes', 'todas', 'resueltas'].map(f => React.createElement('button', {
+                key: f,
+                onClick: () => setFiltro(f),
+                className: `px-4 py-2 rounded-lg text-sm font-medium transition ${filtro === f ? 'azur-blue text-white' : 'bg-white text-gray-600 hover:bg-gray-100 shadow-sm'}`
+            }, f === 'pendientes' ? `⚠️ Pendientes (${tareas.filter(t => !t.resuelta).length})` : f === 'resueltas' ? '✅ Resueltas' : '📋 Todas'))
+        ),
+
+        filtradas.length === 0 ? React.createElement('div', { className: 'bg-white rounded-xl shadow p-8 text-center text-gray-400' },
+            React.createElement('div', { className: 'text-4xl mb-2' }, filtro === 'pendientes' ? '🎉' : '📋'),
+            React.createElement('p', null, filtro === 'pendientes' ? '¡Sin tareas pendientes!' : 'No hay tareas en esta categoría')
+        ) : React.createElement('div', { className: 'space-y-3' },
+            filtradas.map(t => React.createElement('div', {
+                key: t.id,
+                className: `bg-white rounded-xl shadow p-4 border-l-4 ${t.estado === 'mal' ? 'border-red-500' : 'border-yellow-500'}`
+            },
+                React.createElement('div', { className: 'flex items-start justify-between mb-2' },
+                    React.createElement('div', null,
+                        React.createElement('div', { className: 'font-semibold text-gray-800 text-sm' }, t.item),
+                        React.createElement('div', { className: 'text-xs text-gray-500 mt-0.5' },
+                            `${t.seccionNombre}${t.habitacion ? ` — Hab. #${t.habitacion.numero}` : ''} · ${t.seccionItem}`
+                        ),
+                        React.createElement('div', { className: 'text-xs text-gray-400 mt-0.5' }, formatFecha(t.timestamp))
+                    ),
+                    React.createElement('span', { className: `text-xs font-bold px-2 py-0.5 rounded-full ${t.estado === 'mal' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}` },
+                        t.estado === 'mal' ? '❌ Mal' : '⚠️ Regular'
+                    )
+                ),
+
+                t.observacion ? React.createElement('div', { className: 'text-sm text-gray-600 italic mb-2 bg-gray-50 rounded p-2' },
+                    `"${t.observacion}"`
+                ) : null,
+
+                // Área asignada
+                !t.resuelta ? React.createElement('div', { className: 'flex items-center gap-2 mb-2' },
+                    React.createElement('span', { className: 'text-xs text-gray-500' }, 'Área:'),
+                    ['HSK', 'Mantenimiento'].map(area => React.createElement('button', {
+                        key: area,
+                        onClick: () => handleAsignarArea(t, area),
+                        className: `px-2 py-1 text-xs rounded-full transition ${t.area === area ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`
+                    }, area))
+                ) : null,
+
+                // Resolución
+                t.resuelta ? React.createElement('div', { className: 'bg-green-50 rounded-lg p-2 text-xs text-green-700 mt-2' },
+                    React.createElement('div', { className: 'font-semibold' }, `✅ Resuelto por ${t.resueltaPor}`),
+                    React.createElement('div', { className: 'text-green-600' }, formatFecha(t.resueltaTimestamp)),
+                    t.notaResolucion ? React.createElement('div', { className: 'mt-1 italic' }, `"${t.notaResolucion}"`) : null
+                ) : resolviendo === t.id ? React.createElement('div', { className: 'mt-2 space-y-2' },
+                    React.createElement('textarea', {
+                        placeholder: '¿Qué se hizo para resolverlo? (opcional)',
+                        value: notaResolucion,
+                        onChange: e => setNotaResolucion(e.target.value),
+                        rows: 2,
+                        className: 'w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 resize-none'
+                    }),
+                    React.createElement('div', { className: 'flex gap-2' },
+                        React.createElement('button', {
+                            onClick: () => handleResolver(t),
+                            className: 'flex-1 bg-green-500 text-white py-2 rounded-lg text-sm font-semibold hover:bg-green-600'
+                        }, '✅ Confirmar resolución'),
+                        React.createElement('button', {
+                            onClick: () => { setResolviendo(null); setNotaResolucion(''); },
+                            className: 'px-4 py-2 bg-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-300'
+                        }, 'Cancelar')
+                    )
+                ) : React.createElement('button', {
+                    onClick: () => setResolviendo(t.id),
+                    className: 'mt-2 w-full bg-green-50 text-green-700 border border-green-200 py-2 rounded-lg text-sm font-semibold hover:bg-green-100 transition'
+                }, 'Marcar como resuelto')
+            ))
+        )
+    );
+}
+
+// ─── RENDER ──────────────────────────────────────────────────────────────────
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(App));
+</script>
+</body>
+</html>
